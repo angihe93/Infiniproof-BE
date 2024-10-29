@@ -1,53 +1,64 @@
-from fastapi import FastAPI, HTTPException
-from web3 import Web3, HTTPProvider
 import os
-import json
-
-app = FastAPI()
-
-# Setup Web3 connection
-w3 = Web3(Web3.HTTPProvider('https://<network>.infura.io/v3/YOUR_PROJECT_ID'))
-
-# Assuming the compiled contract ABI and the contract address are available
-with open('HashStorage.json', 'r') as file:
-    contract_json = json.load(file)
-    contract_abi = contract_json['abi']
-    contract_address = '0xContractAddress'
-contract = w3.eth.contract(address=contract_address, abi=contract_abi)
+import secrets
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.exceptions import InvalidTag
+import hashlib
 
 
-# store the hash
-@app.post("/store-hash/")
-async def store_hash(hash_value: str):
-    account_address = '0xYourAccountAddress'
-    private_key = os.getenv('PRIVATE_KEY')
+def encrypt_file(file_path, key):
+    nonce = secrets.token_bytes(12)
 
-    # Create the transaction
-    nonce = w3.eth.getTransactionCount(account_address)
-    transaction = contract.functions.storeHash(hash_value).buildTransaction({
-        'from': account_address,
-        'nonce': nonce,
-        'gas': 2000000,
-        'gasPrice': w3.eth.gas_price
-    })
-    signed_txn = w3.eth.account.sign_transaction(transaction, private_key=private_key)
-    tx_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
-    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    with open(file_path, 'rb') as f:
+        filename = os.path.basename(file_path)
+        file_data = f.read()
 
-    return {"tx_hash": tx_receipt.transactionHash.hex(), "status": "Hash stored"}
+    data_to_encrypt = filename.encode() + b'\x00' + file_data
 
-# Endpoint to verify hash
-@app.get("/verify-hash/")
-async def verify_hash(tx_hash: str):
-    tx_receipt = w3.eth.getTransactionReceipt(tx_hash)
-    if not tx_receipt:
-        raise HTTPException(status_code=404, detail="Transaction not found")
+    aesgcm = AESGCM(key)
+    ciphertext = aesgcm.encrypt(nonce, data_to_encrypt, None)
 
-    # Assuming we have the event ABI correctly set up here
-    event = contract.events.HashStored()
-    event_data = event.processReceipt(tx_receipt)
-    if not event_data:
-        raise HTTPException(status_code=404, detail="No event found in the transaction")
+    return nonce + ciphertext
 
-    event_args = event_data[0]['args']
-    return {"hash": event_args['hash'], "timestamp": event_args['timestamp'], "index": event_args['index']}
+
+def create_hash(data):
+    hasher = hashlib.sha256()
+    hasher.update(data)
+    hash_256 = hasher.digest()
+    return hash_256.hex()
+
+
+def decrypt_file(encrypted_data, key):
+    nonce = encrypted_data[:12]
+    ciphertext = encrypted_data[12:]
+
+    aesgcm = AESGCM(key)
+    try:
+        decrypted_data = aesgcm.decrypt(nonce, ciphertext, None)
+    except InvalidTag:
+        print("Failed to decrypt. The ciphertext may have been tampered with or the wrong key was used.")
+        return None
+
+    filename, file_data = decrypted_data.split(b'\x00', 1)
+    return filename.decode(), file_data
+
+
+def main():
+    file_path = 'input.txt'
+    key = secrets.token_bytes(32)
+
+    encrypted_data = encrypt_file(file_path, key)
+    print("Encryption successful")
+    file_hash = create_hash(encrypted_data)
+    print(f"File hash: {file_hash}")
+
+    result = decrypt_file(encrypted_data, key)
+    if result:
+        filename, file_data = result
+        print(f"Decrypted file: {filename}")
+        with open(f"decrypted_{filename}", 'wb') as f:
+            f.write(file_data)
+        print("File restored successfully")
+
+
+if __name__ == "__main__":
+    main()
