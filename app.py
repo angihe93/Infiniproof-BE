@@ -37,7 +37,10 @@ async def store_hash(hash_value: str):
         tx_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
         tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
 
-        return {"tx_hash": tx_receipt.transactionHash.hex(), "status": "Hash stored"}
+        block = w3.eth.getBlock(tx_receipt.blockHash)
+        timestamp = block.timestamp
+
+        return {"tx_hash": tx_receipt.transactionHash.hex(), "timestamp": timestamp, "status": "Hash stored"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
