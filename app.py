@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from web3 import Web3
 import json
 import os
@@ -6,6 +7,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 infura_id = os.getenv('INFURA_ID')
 if not infura_id:
     raise Exception("INFURA_ID is not set!")
@@ -22,6 +32,7 @@ with open(contract_abi_path, 'r') as file:
 
 contract_address = '0xC2fba0A73D9843f109e235e985648207792Ce18f'  # address of where the contract was deployed
 contract = w3.eth.contract(address=contract_address, abi=contract_abi)
+print(type(contract))
 
 
 # this is assuming we use our own account for all transactions and the user pays us with other means
@@ -31,15 +42,19 @@ async def store_hash(data: dict):
         hash_value = data.get("hash_value", "")
         if not hash_value:
             raise HTTPException(status_code=400, detail="Invalid hash")
+        
             
         account_address = '0xc3561A59F3E69C54DAFC1ed26E9d32f6DE293d42'
         private_key = os.getenv('PRIVATE_KEY')
 
-        nonce = w3.eth.getTransactionCount(account_address)
+        nonce = w3.eth.getTransactionCount(account_address)  # TODO: this returns 400 Bad Request
+        print(type(nonce))
         
         gas_estimate = contract.functions.storeHash(hash_value).estimateGas({
-        'from': account_address
+            'from': account_address
         })
+        print(gas_estimate)
+        
 
         transaction = contract.functions.storeHash(hash_value).buildTransaction({
             'from': account_address,
