@@ -26,8 +26,12 @@ contract = w3.eth.contract(address=contract_address, abi=contract_abi)
 
 # this is assuming we use our own account for all transactions and the user pays us with other means
 @app.post("/store-hash/")
-async def store_hash(hash_value: str):
+async def store_hash(data: dict):
     try:
+        hash_value = data.get("hash_value", "")
+        if not hash_value:
+            raise HTTPException(status_code=400, detail="Invalid hash")
+            
         account_address = '0xc3561A59F3E69C54DAFC1ed26E9d32f6DE293d42'
         private_key = os.getenv('PRIVATE_KEY')
 
