@@ -1,13 +1,17 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from web3 import Web3
+from web3.exceptions import ContractLogicError
 import json
 import os
 from dotenv import load_dotenv
+from pydantic import BaseModel
+
 load_dotenv()
 
 app = FastAPI()
 
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,67 +34,86 @@ contract_abi_path = os.path.join('compiled_contract', 'HashStorage_sol_HashStora
 with open(contract_abi_path, 'r') as file:
     contract_abi = json.load(file)
 
-contract_address = '0xC2fba0A73D9843f109e235e985648207792Ce18f'  # address of where the contract was deployed
+contract_address = Web3.to_checksum_address('0xC2fba0A73D9843f109e235e985648207792Ce18f')
 contract = w3.eth.contract(address=contract_address, abi=contract_abi)
-print(type(contract))
 
+class HashData(BaseModel):
+    hash_value: str
 
-# this is assuming we use our own account for all transactions and the user pays us with other means
 @app.post("/store-hash/")
-async def store_hash(data: dict):
+async def store_hash(data: HashData):
     try:
-        hash_value = data.get("hash_value", "")
+        hash_value = data.hash_value
         if not hash_value:
             raise HTTPException(status_code=400, detail="Invalid hash")
         
-            
-        account_address = '0xc3561A59F3E69C54DAFC1ed26E9d32f6DE293d42'
+        account_address = Web3.to_checksum_address('0xc3561A59F3E69C54DAFC1ed26E9d32f6DE293d42')
         private_key = os.getenv('PRIVATE_KEY')
 
-        nonce = w3.eth.getTransactionCount(account_address)  # TODO: this returns 400 Bad Request
-        print(type(nonce))
+        nonce = w3.eth.get_transaction_count(account_address)
+        print(f"Nonce: {nonce}")
         
-        gas_estimate = contract.functions.storeHash(hash_value).estimateGas({
-            'from': account_address
-        })
-        print(gas_estimate)
+        gas_estimate = contract.functions.storeHash(hash_value).estimate_gas({'from': account_address})
+        print(f"Gas estimate: {gas_estimate}")
         
-
-        transaction = contract.functions.storeHash(hash_value).buildTransaction({
+        transaction = contract.functions.storeHash(hash_value).build_transaction({
             'from': account_address,
             'nonce': nonce,
             'gas': gas_estimate,
-            'gasPrice': w3.eth.gas_price
+            'maxFeePerGas': w3.eth.max_priority_fee + (2 * w3.eth.get_block('latest')['baseFeePerGas']),
+            'maxPriorityFeePerGas': w3.eth.max_priority_fee,
         })
+        print(f"Transaction built: {transaction}")
 
         signed_txn = w3.eth.account.sign_transaction(transaction, private_key=private_key)
-        tx_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
+        print(f"Transaction signed: {signed_txn}")
+
+        # Use 'raw_transaction' instead of 'rawTransaction'
+        tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
+        print(f"Transaction sent, hash: {tx_hash.hex()}")
+
         tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        print(f"Transaction receipt: {tx_receipt}")
 
-        block = w3.eth.getBlock(tx_receipt.blockHash)
-        timestamp = block.timestamp
+        block = w3.eth.get_block(tx_receipt['blockHash'])
+        timestamp = block['timestamp']
 
-        return {"tx_hash": tx_receipt.transactionHash.hex(), "timestamp": timestamp, "status": "Hash stored"}
+        return {"tx_hash": tx_receipt['transactionHash'].hex(), "timestamp": timestamp, "status": "Hash stored"}
+    except ContractLogicError as e:
+        print(f"Contract error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Contract error: {str(e)}")
     except Exception as e:
+        print(f"Error in store_hash: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
-
+    
 @app.get("/verify-hash/")
 async def verify_hash(tx_hash: str):
     try:
-        tx_receipt = w3.eth.getTransactionReceipt(tx_hash)
+        tx_receipt = w3.eth.get_transaction_receipt(tx_hash)
+        print(f"Transaction receipt: {tx_receipt}")
+
         if not tx_receipt:
             raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        logs = tx_receipt['logs']
+        print(f"Transaction logs: {logs}")
 
-        event = contract.events.HashStored()
-        event_data = event.processReceipt(tx_receipt)
-        if not event_data:
-            raise HTTPException(status_code=404, detail="No event found in the transaction")
+        event_signature_hash = Web3.keccak(text="HashStored(string,uint256,uint256)").hex()
+        event_log = next((log for log in logs if log['topics'][0].hex() == event_signature_hash), None)
+        
+        if not event_log:
+            raise HTTPException(status_code=404, detail="No HashStored event found in the transaction")
 
-        event_args = event_data[0]['args']
+        event_data = contract.events.HashStored().process_log(event_log)
+        print(f"Decoded event data: {event_data}")
+
+        event_args = event_data['args']
+        print(f"Event args: {event_args}")
+        
         return {"hash": event_args['hash'], "timestamp": event_args['timestamp'], "index": event_args['index']}
     except Exception as e:
+        print(f"Error in verify_hash: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
-
 
 if __name__ == "__main__":
     import uvicorn
