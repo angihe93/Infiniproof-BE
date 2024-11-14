@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web3 Front-End</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -15,7 +16,7 @@
         }
 
         .container {
-            max-width: 500px;
+            max-width: 600px;
             width: 100%;
             padding: 20px;
             border: 1px solid #ddd;
@@ -38,8 +39,25 @@
             background-color: #45a049;
         }
 
-        .output {
-            margin-top: 20px;
+        .hash-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow-wrap: break-word;
+        }
+
+        .copy-icon {
+            cursor: pointer;
+            font-size: 18px;
+            color: #007bff;
+        }
+
+        .copy-icon:hover {
+            color: #0056b3;
+        }
+
+        .output p {
+            margin: 0;
         }
 
         #errorMessage,
@@ -58,7 +76,10 @@
         <button onclick="handleUpload()">Upload and Submit to Blockchain</button>
 
         <div class="output">
-            <p><strong>Transaction Hash:</strong> <span id="txHash"></span></p>
+            <div class="hash-container">
+                <p><strong>Transaction Hash:</strong> <span id="txHash"></span></p>
+                <i class="fas fa-copy copy-icon" onclick="copyToClipboard('txHash')"></i>
+            </div>
             <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
         </div>
         <p id="errorMessage"></p>
@@ -70,7 +91,10 @@
         <button onclick="retrieveData()">Retrieve</button>
 
         <div class="output">
-            <p><strong>File Hash:</strong> <span id="fileHash"></span></p>
+            <div class="hash-container">
+                <p><strong>File Hash:</strong> <span id="fileHash"></span></p>
+                <i class="fas fa-copy copy-icon" onclick="copyToClipboard('fileHash')"></i>
+            </div>
             <p><strong>Timestamp:</strong> <span id="retrieveTimestamp"></span></p>
             <p><strong>Index:</strong> <span id="retrieveIndex"></span></p>
         </div>
@@ -80,6 +104,16 @@
     <script>
         // Set your API base URL
         const API_BASE_URL = "http://127.0.0.1:8000";
+
+        // Copy the hash to clipboard
+        function copyToClipboard(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert("Copied to clipboard!");
+            }).catch(err => {
+                console.error("Could not copy text: ", err);
+            });
+        }
 
         // Function to hash data using SHA-256
         async function hashData(data) {
@@ -198,7 +232,6 @@
                 errorMessage.textContent = `Error retrieving data: ${error.message}`;
             }
         }
-
     </script>
 
 </body>
