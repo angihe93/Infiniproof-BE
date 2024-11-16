@@ -3,3 +3,8 @@
 .vscode
 *.pyc
 .DS_Store
+.trunk/actions
+.trunk/logs
+.trunk/notifications
+.trunk/out
+.trunk/tools
