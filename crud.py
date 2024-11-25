@@ -18,6 +18,9 @@ def create_transaction(db: Session, transaction: schemas.Transaction):
 def get_transaction(db: Session, tr_hash: str):
     return db.query(models.Transaction).filter(models.Transaction.tr_hash == tr_hash).first()
 
+def get_user_transactions(db: Session, user_id: int):
+    return db.query(models.Transaction).filter(models.Transaction.user_id == user_id).all()
+
 def create_user(db: Session, user: schemas.User):
     db_user = models.User(
         uname       = user.uname,
