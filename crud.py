@@ -5,7 +5,6 @@ import schemas
 def create_transaction(db: Session, transaction: schemas.Transaction):
     db_transaction = models.Transaction(
         user_id                     = transaction.user_id,
-        uname                       = transaction.uname,
         tr_hash                     = transaction.tr_hash,
         bc_hash_link                = transaction.bc_file_link,
         bc_file_link                = transaction.bc_file_link,

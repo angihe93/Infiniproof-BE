@@ -1,17 +1,38 @@
 from pydantic import BaseModel
-    
-class Transaction(BaseModel):
-    id: int             #transaction id
-    user_id: int        #id of user who created the transaction NOT USED FOR LOGIN
-    uname: str          #username, used for login
+
+
+class TransactionBase(BaseModel):
     tr_hash: str
+
+
+class TransactionCreate(TransactionBase):
+    user_id: int        #id of user who created the transaction NOT USED FOR LOGIN
     bc_hash_link: str   #link to block containing hash
     bc_file_link: str   #link to distributed file storage
     decrypt_key_first_last_5: str
 
 
-class User(BaseModel):
-    id: int         #same as user_id in Transaction class
+class Transaction(TransactionCreate):
+    id: int             #transaction id
+
+    class Config:
+        orm_mode = True
+        from_attributes = True
+
+
+class UserBase(BaseModel):
     uname: str      #username
-    pass_hash: str  #hashed password
+
+
+class UserCreate(UserBase):
+    pass_hash: str
+
+
+class User(UserCreate):
+    id: int         #same as user_id in Transaction class
     transactions: list[Transaction] = []
+
+    class Config:
+        orm_mode = True
+        from_attributes = True
+
