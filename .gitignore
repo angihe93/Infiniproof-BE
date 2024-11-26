@@ -10,3 +10,9 @@
 .trunk/tools
 /temp
 sql_app.db
+
+# Alembic
+migrations/
+alembic.ini
+alembic/
+versions/
