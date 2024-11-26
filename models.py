@@ -1,24 +1,15 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
-from sqlalchemy.orm import relationship
-from database import Base
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from datetime import datetime
+
+Base = declarative_base()
 
 class Transaction(Base):
     __tablename__ = "transactions"
-    id                          = Column(Integer, primary_key=True)
-    tr_hash                     = Column(String, unique=True, index=True)
-    bc_hash_link                = Column(String, unique=True)
-    bc_file_link                = Column(String, unique=True)
-    decrypt_key_first_last_5    = Column(String)
-    user_id                     = Column(Integer, ForeignKey("users.id"))
-    
-    user                        = relationship("User", back_populates="transactions")
-    
 
-
-class User(Base):
-    __tablename__ = "users"
-    id              = Column(Integer, primary_key=True)
-    uname           = Column(String, unique=True, index=True)
-    pass_hash       = Column(String)
-    
-    transactions    = relationship("Transaction", back_populates="user")
+    id = Column(Integer, primary_key=True, index=True)
+    tr_hash = Column(String, unique=True, index=True)
+    bc_hash_link = Column(String)
+    ipfs_cid = Column(String)
+    user_id = Column(Integer)
+    created_at = Column(DateTime, default=datetime.utcnow)

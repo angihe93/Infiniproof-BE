@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web3 Front-End</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            width: 100%;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .hash-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow-wrap: break-word;
+        }
+
+        .copy-icon {
+            cursor: pointer;
+            font-size: 18px;
+            color: #007bff;
+        }
+
+        .copy-icon:hover {
+            color: #0056b3;
+        }
+
+        .output p {
+            margin: 0;
+        }
+
+        #errorMessage,
+        #retrieveErrorMessage {
+            color: red;
+            margin-top: 10px;
+        }
+
+        .output a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        
+        .output a:hover {
+            text-decoration: underline;
+        }
+
+        #etherscanLink {
+            margin-left: 5px;
+        }
+
+        .hash-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h2>File Upload and Blockchain Submission</h2>
+        <div class="upload-section">
+            <input type="file" id="fileInput">
+            <button type="button" id="uploadButton">Upload and Submit to Blockchain</button>
+        </div>
+
+        <div class="output">
+            <div class="hash-container">
+                <p><strong>Transaction Hash:</strong> <span id="txHash"></span></p>
+                <i class="fas fa-copy copy-icon" onclick="copyToClipboard('txHash')"></i>
+            </div>
+            <p><strong>Transaction Link:</strong> <span id="etherscanLink"></span></p>
+            <div class="hash-container">
+                <p><strong>IPFS Hash:</strong> <span id="ipfsHash"></span></p>
+                <i class="fas fa-copy copy-icon" onclick="copyToClipboard('ipfsHash')"></i>
+            </div>
+            <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
+        </div>
+        <p id="errorMessage"></p>
+    </div>
+
+    <div class="container">
+        <h2>Retrieve Data</h2>
+        <input type="text" id="transactionHashInput" placeholder="Enter transaction hash">
+        <button onclick="retrieveData()">Retrieve</button>
+
+        <div class="output">
+            <div class="hash-container">
+                <p><strong>File Hash:</strong> <span id="fileHash"></span></p>
+                <i class="fas fa-copy copy-icon" onclick="copyToClipboard('fileHash')"></i>
+            </div>
+            <div class="hash-container">
+                <p><strong>IPFS Hash:</strong> <span id="retrievedIpfsHash"></span></p>
+                <i class="fas fa-copy copy-icon" onclick="copyToClipboard('retrievedIpfsHash')"></i>
+            </div>
+            <p><strong>Timestamp:</strong> <span id="retrieveTimestamp"></span></p>
+            <p><strong>Index:</strong> <span id="retrieveIndex"></span></p>
+            <button onclick="viewIPFSFile()" id="viewFileButton">View File</button>
+        </div>
+        <p id="retrieveErrorMessage"></p>
+    </div>
+
+    <script>
+        // Set your API base URL - update this to use the current host
+        const API_BASE_URL = 'http://localhost:8000';
+
+        // Copy the hash to clipboard
+        function copyToClipboard(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert("Copied to clipboard!");
+            }).catch(err => {
+                console.error("Could not copy text: ", err);
+            });
+        }
+
+        // Function to hash data using SHA-256
+        async function hashData(data) {
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // Function to encrypt data using AES-GCM
+        async function encryptData(data, password) {
+            const encoder = new TextEncoder();
+            const passwordKey = await crypto.subtle.importKey(
+                'raw',
+                encoder.encode(password),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveKey']
+            );
+
+            // Derive a 256-bit AES-GCM key from the password
+            const key = await crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: encoder.encode('some-salt'), // Use a constant salt or generate a unique one for each encryption
+                    iterations: 100000,
+                    hash: 'SHA-256'
+                },
+                passwordKey,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt']
+            );
+
+            const iv = crypto.getRandomValues(new Uint8Array(12)); // Initialization vector
+            const encrypted = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv: iv },
+                key,
+                data
+            );
+            return { iv: Array.from(iv), data: new Uint8Array(encrypted) };
+        }
+
+        // Local Storage Solution for IPFS Hash Management
+        /*
+        PROS:
+        1. Simple implementation - no backend changes needed
+        2. Fast access - data is stored locally
+        3. No additional gas costs - doesn't modify blockchain
+        4. Persists between page refreshes
+        5. Zero infrastructure cost
+
+        CONS:
+        1. Browser-specific - hashes only available where uploaded
+        2. Cleared when browser data is cleared
+        3. Not shared between devices/users
+        4. Limited storage space
+        5. Not truly decentralized
+        */
+
+        // Store IPFS hash with its corresponding transaction hash
+        function storeIPFSHash(txHash, ipfsHash) {
+            const ipfsMapping = JSON.parse(localStorage.getItem('ipfsMapping') || '{}');
+            ipfsMapping[txHash] = ipfsHash;
+            localStorage.setItem('ipfsMapping', JSON.stringify(ipfsMapping));
+        }
+
+        // Retrieve IPFS hash using transaction hash
+        function getStoredIPFSHash(txHash) {
+            const ipfsMapping = JSON.parse(localStorage.getItem('ipfsMapping') || '{}');
+            return ipfsMapping[txHash] || null;
+        }
+
+        /*
+        Alternative Solutions:
+
+        1. Database Solution:
+           PROS:
+           - Available across all devices
+           - Shared between users
+           - More storage space
+           - Better data management
+           CONS:
+           - Requires backend infrastructure
+           - Additional maintenance cost
+           - Single point of failure
+           - Not decentralized
+
+        2. Smart Contract Solution:
+           PROS:
+           - Fully decentralized
+           - Always available
+           - Immutable record
+           - Shared globally
+           CONS:
+           - Higher gas costs
+           - Contract size limitations
+           - More complex implementation
+           - Requires contract modification
+        */
+
+        // Function to get IPFS gateway URL
+        function getIPFSGatewayURL(ipfsHash) {
+            // Direct gateway URL for viewing in browser
+            return `https://gateway.pinata.cloud/ipfs/${ipfsHash}`;
+        }
+
+        // Function to get Etherscan URL
+        function getEtherscanURL(txHash) {
+            // Add '0x' prefix if it's not already there
+            const formattedHash = txHash.startsWith('0x') ? txHash : `0x${txHash}`;
+            return `https://sepolia.etherscan.io/tx/${formattedHash}`;
+        }
+
+        // Handle file upload, encrypt, hash encrypted data, and send to backend
+        async function handleUpload(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+
+            const fileInput = document.getElementById('fileInput');
+            const errorMessage = document.getElementById('errorMessage');
+            errorMessage.textContent = '';
+
+            if (!fileInput.files[0]) {
+                errorMessage.textContent = 'Please select a file';
+                return;
+            }
+
+            try {
+                console.log("=== Starting Upload Process ===");
+                
+                // Read file
+                const file = fileInput.files[0];
+                const arrayBuffer = await file.arrayBuffer();
+                console.log("Step 1: File read successfully, size:", arrayBuffer.byteLength);
+
+                // Encrypt data
+                const password = 'your-encryption-password';
+                const encryptedData = await encryptData(arrayBuffer, password);
+                console.log("Step 2: Data encrypted successfully");
+
+                // Generate hash
+                const encryptedArrayBuffer = encryptedData.data.buffer;
+                const encryptedHash = await hashData(encryptedArrayBuffer);
+                console.log("Step 3: Generated hash:", encryptedHash);
+
+                // Upload to IPFS
+                console.log("Step 4: Uploading to IPFS...");
+                const formData = new FormData();
+                const blob = new Blob([encryptedData.data], { type: 'application/octet-stream' });
+                formData.append('file', blob, file.name);
+
+                const uploadResponse = await fetch(`${API_BASE_URL}/upload-to-ipfs/`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!uploadResponse.ok) {
+                    throw new Error(`IPFS upload failed: ${await uploadResponse.text()}`);
+                }
+
+                const uploadResult = await uploadResponse.json();
+                console.log("Step 5: IPFS Upload successful:", uploadResult);
+                const ipfsHash = uploadResult.ipfs_hash;
+
+                // Store hash on blockchain with IPFS hash
+                console.log("Step 6: Preparing to store hash on blockchain...");
+                const storeResponse = await fetch(`${API_BASE_URL}/store-hash/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        hash_value: encryptedHash,
+                        ipfs_hash: ipfsHash
+                    })
+                });
+
+                if (!storeResponse.ok) {
+                    throw new Error(`Failed to store hash: ${await storeResponse.text()}`);
+                }
+
+                const result = await storeResponse.json();
+                console.log("Step 7: Blockchain storage successful:", result);
+
+                // Store the IPFS hash mapping in localStorage
+                storeIPFSHash(result.tx_hash, ipfsHash);
+
+                // Update UI with transaction hash and Etherscan link
+                const txHash = result.tx_hash;
+                document.getElementById('txHash').textContent = txHash;
+                document.getElementById('etherscanLink').innerHTML = `
+                    <a href="${getEtherscanURL(txHash)}" target="_blank">
+                        View on Etherscan
+                    </a>
+                `;
+                
+                // Update UI
+                document.getElementById('ipfsHash').textContent = ipfsHash;
+                document.getElementById('timestamp').textContent = 
+                    new Date(result.timestamp * 1000).toLocaleString();
+                console.log("Step 8: UI updated successfully");
+
+            } catch (error) {
+                console.error('Error:', error);
+                errorMessage.textContent = error.message;
+            }
+        }
+
+        // Retrieve file hash and timestamp using transaction hash
+        async function retrieveData() {
+            const transactionHash = document.getElementById('transactionHashInput').value;
+            const errorMessage = document.getElementById('retrieveErrorMessage');
+            errorMessage.textContent = '';
+
+            if (!transactionHash) {
+                errorMessage.textContent = 'Please enter a transaction hash';
+                return;
+            }
+
+            try {
+                // Get blockchain data
+                const response = await fetch(`${API_BASE_URL}/verify-hash/?tx_hash=${transactionHash}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to retrieve data: ${await response.text()}`);
+                }
+
+                const result = await response.json();
+
+                // Update UI with blockchain data
+                document.getElementById('fileHash').textContent = result.hash;
+                document.getElementById('retrieveTimestamp').textContent = 
+                    new Date(result.timestamp * 1000).toLocaleString();
+                document.getElementById('retrieveIndex').textContent = result.index;
+
+                if (result.ipfs_hash) {
+                    const ipfsUrl = getIPFSGatewayURL(result.ipfs_hash);
+                    document.getElementById('retrievedIpfsHash').innerHTML = `
+                        <a href="${ipfsUrl}" target="_blank">${result.ipfs_hash}</a>
+                    `;
+                    document.getElementById('viewFileButton').style.display = 'inline-block';
+                } else {
+                    document.getElementById('retrievedIpfsHash').textContent = 'Not available';
+                    document.getElementById('viewFileButton').style.display = 'none';
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                errorMessage.textContent = `Error retrieving data: ${error.message}`;
+            }
+        }
+
+        // Add event listener when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            const uploadButton = document.getElementById('uploadButton');
+            if (uploadButton) {
+                uploadButton.addEventListener('click', handleUpload);
+            }
+        });
+
+        // Simplified viewIPFSFile function that just opens the URL
+        async function viewIPFSFile() {
+            const ipfsHash = document.getElementById('retrievedIpfsHash').textContent;
+            if (!ipfsHash || ipfsHash === 'Not available') {
+                alert('IPFS hash not available');
+                return;
+            }
+
+            // Open directly in new tab
+            const gatewayUrl = getIPFSGatewayURL(ipfsHash);
+            window.open(gatewayUrl, '_blank');
+        }
+    </script>
+
+</body>
+
+</html>

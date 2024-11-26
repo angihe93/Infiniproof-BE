@@ -9,6 +9,7 @@ class TransactionCreate(TransactionBase):
     user_id: int        #id of user who created the transaction NOT USED FOR LOGIN
     bc_hash_link: str   #link to block containing hash
     bc_file_link: str   #link to distributed file storage
+    ipfs_cid: str       #IPFS CID
     decrypt_key_first_last_5: str
 
 

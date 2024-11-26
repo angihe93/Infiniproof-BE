@@ -8,3 +8,5 @@
 .trunk/notifications
 .trunk/out
 .trunk/tools
+/temp
+sql_app.db
