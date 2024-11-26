@@ -78,7 +78,15 @@ async def store_hash(data: HashData):
         block = w3.eth.get_block(tx_receipt['blockHash'])
         timestamp = block['timestamp']
 
-        return {"tx_hash": tx_receipt['transactionHash'].hex(), "timestamp": timestamp, "status": "Hash stored"}
+        # Create Etherscan URL for Sepolia network
+        etherscan_url = f"https://sepolia.etherscan.io/tx/0x{tx_receipt['transactionHash'].hex()}"
+
+        return {
+            "tx_hash": tx_receipt['transactionHash'].hex(),
+            "timestamp": timestamp,
+            "status": "Hash stored",
+            "etherscan_url": etherscan_url
+        }
     except ContractLogicError as e:
         print(f"Contract error: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Contract error: {str(e)}")

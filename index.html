@@ -81,6 +81,7 @@
                 <i class="fas fa-copy copy-icon" onclick="copyToClipboard('txHash')"></i>
             </div>
             <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
+            <p><strong>Transaction Link:</strong> <span id="etherscanLink"></span></p>
         </div>
         <p id="errorMessage"></p>
     </div>
@@ -180,6 +181,7 @@
                 // Hash the encrypted data
                 const encryptedHash = await hashData(encryptedArrayBuffer);
 
+                // Store hash on blockchain
                 const response = await fetch(`${API_BASE_URL}/store-hash/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -189,13 +191,23 @@
                 });
 
                 const result = await response.json();
-
+                
                 if (!response.ok) {
                     throw new Error(result.detail || `HTTP error! status: ${response.status}`);
                 }
 
+                // Update UI with blockchain transaction details
                 document.getElementById('txHash').textContent = result.tx_hash;
                 document.getElementById('timestamp').textContent = new Date(result.timestamp * 1000).toLocaleString();
+                
+                // Add Etherscan link
+                const etherscanLink = document.createElement('a');
+                etherscanLink.href = result.etherscan_url;
+                etherscanLink.target = '_blank';
+                etherscanLink.textContent = 'View on Etherscan';
+                document.getElementById('etherscanLink').innerHTML = '';
+                document.getElementById('etherscanLink').appendChild(etherscanLink);
+                
             } catch (error) {
                 console.error('Error:', error);
                 errorMessage.textContent = `Error uploading file: ${error.message}`;
