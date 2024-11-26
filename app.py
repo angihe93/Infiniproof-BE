@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from web3 import Web3
 from web3.exceptions import ContractLogicError
@@ -6,6 +6,7 @@ import json
 import os
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from pinata_helper import upload_to_pinata, get_from_pinata
 
 load_dotenv()
 
@@ -122,6 +123,24 @@ async def verify_hash(tx_hash: str):
     except Exception as e:
         print(f"Error in verify_hash: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/upload-to-ipfs/")
+async def upload_to_ipfs(file: UploadFile = File(...)):
+    try:
+        # Read the encrypted file content
+        file_content = await file.read()
+        
+        # Upload to Pinata
+        ipfs_hash = upload_to_pinata(file_content)
+        
+        if not ipfs_hash:
+            raise HTTPException(status_code=500, detail="Failed to upload to IPFS")
+            
+        return {"ipfs_hash": ipfs_hash}
+        
+    except Exception as e:
+        print(f"Error in upload_to_ipfs: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

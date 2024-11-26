@@ -82,6 +82,10 @@
             </div>
             <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
             <p><strong>Transaction Link:</strong> <span id="etherscanLink"></span></p>
+            <div class="hash-container">
+                <p><strong>IPFS Hash:</strong> <span id="ipfsHash"></span></p>
+                <i class="fas fa-copy copy-icon" onclick="copyToClipboard('ipfsHash')"></i>
+            </div>
         </div>
         <p id="errorMessage"></p>
     </div>
@@ -98,6 +102,9 @@
             </div>
             <p><strong>Timestamp:</strong> <span id="retrieveTimestamp"></span></p>
             <p><strong>Index:</strong> <span id="retrieveIndex"></span></p>
+            <p><strong>IPFS Gateway Link:</strong> 
+                <a id="ipfsGatewayLink" href="" target="_blank"></a>
+            </p>
         </div>
         <p id="retrieveErrorMessage"></p>
     </div>
@@ -160,7 +167,7 @@
         async function handleUpload() {
             const fileInput = document.getElementById('fileInput');
             const errorMessage = document.getElementById('errorMessage');
-            errorMessage.textContent = ''; // Clear previous error messages
+            errorMessage.textContent = '';
 
             if (!fileInput.files[0]) {
                 errorMessage.textContent = 'Please select a file';
@@ -169,7 +176,7 @@
 
             try {
                 const file = fileInput.files[0];
-                const arrayBuffer = await file.arrayBuffer(); // Read file as ArrayBuffer
+                const arrayBuffer = await file.arrayBuffer();
 
                 // Encrypt the file data
                 const password = 'your-encryption-password'; // Replace with a secure password
@@ -180,6 +187,22 @@
 
                 // Hash the encrypted data
                 const encryptedHash = await hashData(encryptedArrayBuffer);
+
+                // Create form data with ONLY the encrypted file
+                const formData = new FormData();
+                const encryptedBlob = new Blob([encryptedData.data], { type: 'application/octet-stream' });
+                formData.append('file', encryptedBlob, 'encrypted_file');
+
+                // Upload encrypted file to IPFS
+                const ipfsResponse = await fetch(`${API_BASE_URL}/upload-to-ipfs/`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const ipfsResult = await ipfsResponse.json();
+                if (!ipfsResponse.ok) {
+                    throw new Error(ipfsResult.detail || `IPFS upload failed`);
+                }
 
                 // Store hash on blockchain
                 const response = await fetch(`${API_BASE_URL}/store-hash/`, {
@@ -196,9 +219,17 @@
                     throw new Error(result.detail || `HTTP error! status: ${response.status}`);
                 }
 
-                // Update UI with blockchain transaction details
+                // Store encryption key and IPFS hash locally
+                const storageKey = `file_${result.tx_hash}`;
+                localStorage.setItem(storageKey, JSON.stringify({
+                    password: password,
+                    ipfsHash: ipfsResult.ipfs_hash
+                }));
+
+                // Update UI
                 document.getElementById('txHash').textContent = result.tx_hash;
                 document.getElementById('timestamp').textContent = new Date(result.timestamp * 1000).toLocaleString();
+                document.getElementById('ipfsHash').textContent = ipfsResult.ipfs_hash;
                 
                 // Add Etherscan link
                 const etherscanLink = document.createElement('a');
@@ -210,7 +241,7 @@
                 
             } catch (error) {
                 console.error('Error:', error);
-                errorMessage.textContent = `Error uploading file: ${error.message}`;
+                errorMessage.textContent = `Error: ${error.message}`;
             }
         }
 
@@ -239,6 +270,21 @@
                 document.getElementById('fileHash').textContent = result.hash;
                 document.getElementById('retrieveTimestamp').textContent = new Date(result.timestamp * 1000).toLocaleString();
                 document.getElementById('retrieveIndex').textContent = result.index;
+
+                // Get the stored IPFS hash from localStorage
+                const storageKey = `file_${transactionHash}`;
+                const storedData = localStorage.getItem(storageKey);
+                
+                if (storedData) {
+                    const { ipfsHash } = JSON.parse(storedData);
+                    const gatewayLink = `https://gateway.pinata.cloud/ipfs/${ipfsHash}`;
+                    const linkElement = document.getElementById('ipfsGatewayLink');
+                    linkElement.href = gatewayLink;
+                    linkElement.textContent = 'View File on IPFS';
+                } else {
+                    document.getElementById('ipfsGatewayLink').textContent = 'IPFS hash not found locally';
+                }
+
             } catch (error) {
                 console.error('Error:', error);
                 errorMessage.textContent = `Error retrieving data: ${error.message}`;
