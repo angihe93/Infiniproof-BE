@@ -65,6 +65,33 @@
             color: red;
             margin-top: 10px;
         }
+
+        .loader {
+            display: none;
+            border: 3px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 3px solid #3498db;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .status-message {
+            margin: 10px 0;
+            color: #666;
+            font-style: italic;
+        }
     </style>
 </head>
 
@@ -73,7 +100,9 @@
     <div class="container">
         <h2>File Upload and Blockchain Submission</h2>
         <input type="file" id="fileInput">
-        <button onclick="handleUpload()">Upload and Submit to Blockchain</button>
+        <button onclick="handleUpload()" id="uploadButton">Upload and Submit to Blockchain</button>
+        <div class="loader" id="uploadLoader"></div>
+        <div class="status-message" id="statusMessage"></div>
 
         <div class="output">
             <div class="hash-container">
@@ -102,7 +131,7 @@
             </div>
             <p><strong>Timestamp:</strong> <span id="retrieveTimestamp"></span></p>
             <p><strong>Index:</strong> <span id="retrieveIndex"></span></p>
-            <p><strong>IPFS Gateway Link:</strong> 
+            <p><strong>IPFS Gateway Link:</strong>
                 <a id="ipfsGatewayLink" href="" target="_blank"></a>
             </p>
         </div>
@@ -167,28 +196,37 @@
         async function handleUpload() {
             const fileInput = document.getElementById('fileInput');
             const errorMessage = document.getElementById('errorMessage');
+            const loader = document.getElementById('uploadLoader');
+            const statusMessage = document.getElementById('statusMessage');
+            const uploadButton = document.getElementById('uploadButton');
+
             errorMessage.textContent = '';
+            loader.style.display = 'block';
+            uploadButton.disabled = true;
 
             if (!fileInput.files[0]) {
                 errorMessage.textContent = 'Please select a file';
+                loader.style.display = 'none';
+                uploadButton.disabled = false;
                 return;
             }
 
             try {
+                statusMessage.textContent = 'Reading and encrypting file...';
                 const file = fileInput.files[0];
                 const arrayBuffer = await file.arrayBuffer();
 
                 // Encrypt the file data
-                const password = 'your-encryption-password'; // Replace with a secure password
+                const password = 'your-encryption-password';
                 const encryptedData = await encryptData(arrayBuffer, password);
 
                 // Convert the encrypted data to an ArrayBuffer for hashing
                 const encryptedArrayBuffer = encryptedData.data.buffer;
-
-                // Hash the encrypted data
+                statusMessage.textContent = 'Creating hash of encrypted data...';
                 const encryptedHash = await hashData(encryptedArrayBuffer);
 
                 // Create form data with ONLY the encrypted file
+                statusMessage.textContent = 'Uploading encrypted file to IPFS...';
                 const formData = new FormData();
                 const encryptedBlob = new Blob([encryptedData.data], { type: 'application/octet-stream' });
                 formData.append('file', encryptedBlob, 'encrypted_file');
@@ -205,6 +243,7 @@
                 }
 
                 // Store hash on blockchain
+                statusMessage.textContent = 'Storing hash on blockchain (this may take a few moments)...';
                 const response = await fetch(`${API_BASE_URL}/store-hash/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -214,12 +253,13 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (!response.ok) {
                     throw new Error(result.detail || `HTTP error! status: ${response.status}`);
                 }
 
                 // Store encryption key and IPFS hash locally
+                statusMessage.textContent = 'Storing encryption keys locally...';
                 const storageKey = `file_${result.tx_hash}`;
                 localStorage.setItem(storageKey, JSON.stringify({
                     password: password,
@@ -230,7 +270,7 @@
                 document.getElementById('txHash').textContent = result.tx_hash;
                 document.getElementById('timestamp').textContent = new Date(result.timestamp * 1000).toLocaleString();
                 document.getElementById('ipfsHash').textContent = ipfsResult.ipfs_hash;
-                
+
                 // Add Etherscan link
                 const etherscanLink = document.createElement('a');
                 etherscanLink.href = result.etherscan_url;
@@ -238,10 +278,16 @@
                 etherscanLink.textContent = 'View on Etherscan';
                 document.getElementById('etherscanLink').innerHTML = '';
                 document.getElementById('etherscanLink').appendChild(etherscanLink);
-                
+
+                statusMessage.textContent = 'Process completed successfully!';
+
             } catch (error) {
                 console.error('Error:', error);
                 errorMessage.textContent = `Error: ${error.message}`;
+                statusMessage.textContent = 'An error occurred during the process.';
+            } finally {
+                loader.style.display = 'none';
+                uploadButton.disabled = false;
             }
         }
 
@@ -274,7 +320,7 @@
                 // Get the stored IPFS hash from localStorage
                 const storageKey = `file_${transactionHash}`;
                 const storedData = localStorage.getItem(storageKey);
-                
+
                 if (storedData) {
                     const { ipfsHash } = JSON.parse(storedData);
                     const gatewayLink = `https://gateway.pinata.cloud/ipfs/${ipfsHash}`;
