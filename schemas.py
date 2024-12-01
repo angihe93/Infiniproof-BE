@@ -36,3 +36,13 @@ class User(UserCreate):
         orm_mode = True
         from_attributes = True
 
+
+class UploadResponse(BaseModel):
+    tx_hash: str
+    etherscan_url: str
+    timestamp: str
+    ipfs_hash: str
+
+    class Config:
+        orm_mode = True
+        from_attributes = True

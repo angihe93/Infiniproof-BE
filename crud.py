@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 
-def create_transaction(db: Session, transaction: schemas.Transaction):
+def create_transaction(db: Session, transaction: schemas.TransactionCreate):
     db_transaction = models.Transaction(
         user_id                     = transaction.user_id,
         tr_hash                     = transaction.tr_hash,
@@ -21,7 +21,7 @@ def get_transaction(db: Session, tr_hash: str):
 def get_user_transactions(db: Session, user_id: int):
     return db.query(models.Transaction).filter(models.Transaction.user_id == user_id).all()
 
-def create_user(db: Session, user: schemas.User):
+def create_user(db: Session, user: schemas.UserCreate):
     db_user = models.User(
         uname       = user.uname,
         pass_hash   = user.pass_hash

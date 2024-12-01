@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from web3 import Web3
 from web3.exceptions import ContractLogicError
@@ -7,10 +7,41 @@ import os
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from pinata_helper import upload_to_pinata, get_from_pinata
+from database import SessionLocal, engine
+import crud
+import models
+import schemas
+import logging
+from sqlalchemy.orm import Session
+import hashlib
+import datetime
 
 load_dotenv()
 
+
 app = FastAPI()
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("app.log"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+models.Base.metadata.create_all(bind=engine)
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 
 # Add CORS middleware
 app.add_middleware(
@@ -38,8 +69,101 @@ with open(contract_abi_path, 'r') as file:
 contract_address = Web3.to_checksum_address('0xC2fba0A73D9843f109e235e985648207792Ce18f')
 contract = w3.eth.contract(address=contract_address, abi=contract_abi)
 
+
 class HashData(BaseModel):
     hash_value: str
+
+
+@app.post("/register", response_model=schemas.User)
+async def register(
+        username: str,
+        password: str,
+        db: Session = Depends(get_db)
+):
+    try:
+        user = crud.get_user(db, username)
+        if user:
+            raise HTTPException(status_code=400, detail="User already exists")
+
+        pass_hash = get_password_hash(password)
+
+        db_user = schemas.UserCreate(uname=username, pass_hash=pass_hash)
+        user = crud.create_user(db, db_user)
+        user_schema = schemas.User.from_orm(user)
+        return user_schema
+    except Exception as e:
+        logger.error(f"Error in register: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/transactions/{username}", response_model=list[schemas.Transaction])
+async def transactions(username: str, password: str, db: Session = Depends(get_db)):
+    try:
+        user = crud.get_user(db, username)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if not user.pass_hash == get_password_hash(password):
+            raise HTTPException(status_code=401, detail="Invalid password")
+
+        user_transactions = crud.get_user_transactions(db, user.id)
+        user_transactions = [schemas.Transaction.from_orm(transaction) for transaction in user_transactions]
+        return user_transactions
+
+    except Exception as e:
+        logger.error(f"Error in transactions: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/upload", response_model=schemas.UploadResponse)
+async def upload(
+        email: str,
+        password: str,
+        decrypt_key_first_last_5: str,
+        encrypted_file: UploadFile = File(...),
+        db: Session = Depends(get_db)
+):
+    try:
+        user = crud.get_user(db, email)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if not user.pass_hash == get_password_hash(password):
+            raise HTTPException(status_code=401, detail="Invalid password")
+
+        file_content = await encrypted_file.read()
+
+        ipfs_hash = upload_to_pinata(file_content)
+
+        if not ipfs_hash:
+            raise HTTPException(status_code=500, detail="Failed to upload to IPFS")
+
+        file_hash = get_file_hash(file_content)
+
+        store_hash_info = await store_hash(HashData(hash_value=file_hash))
+
+        response_data = schemas.UploadResponse(
+            tx_hash=store_hash_info['tx_hash'],
+            etherscan_url=store_hash_info['etherscan_url'],
+            timestamp=convert_unix_to_datetime(store_hash_info['timestamp']),
+            ipfs_hash=ipfs_hash
+        )
+
+        db_transaction = schemas.TransactionCreate(
+            user_id=user.id,
+            tr_hash=store_hash_info['tx_hash'],
+            bc_hash_link=store_hash_info['etherscan_url'],
+            bc_file_link=ipfs_hash,
+            decrypt_key_first_last_5=decrypt_key_first_last_5
+        )
+
+        crud.create_transaction(db, db_transaction)
+        return response_data
+
+    except Exception as e:
+        logger.error(f"Error in upload: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/store-hash/")
 async def store_hash(data: HashData):
@@ -84,7 +208,7 @@ async def store_hash(data: HashData):
 
         return {
             "tx_hash": tx_receipt['transactionHash'].hex(),
-            "timestamp": timestamp,
+            "timestamp": convert_unix_to_datetime(timestamp),
             "status": "Hash stored",
             "etherscan_url": etherscan_url
         }
@@ -94,7 +218,27 @@ async def store_hash(data: HashData):
     except Exception as e:
         print(f"Error in store_hash: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
-    
+
+
+# @app.post("/upload-to-ipfs/")
+# async def upload_to_ipfs(file: UploadFile = File(...)):
+#     try:
+#         # Read the encrypted file content
+#         file_content = await file.read()
+#
+#         # Upload to Pinata
+#         ipfs_hash = upload_to_pinata(file_content)
+#
+#         if not ipfs_hash:
+#             raise HTTPException(status_code=500, detail="Failed to upload to IPFS")
+#
+#         return {"ipfs_hash": ipfs_hash}
+#
+#     except Exception as e:
+#         print(f"Error in upload_to_ipfs: {str(e)}")
+#         raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/verify-hash/")
 async def verify_hash(tx_hash: str):
     try:
@@ -119,28 +263,30 @@ async def verify_hash(tx_hash: str):
         event_args = event_data['args']
         print(f"Event args: {event_args}")
         
-        return {"hash": event_args['hash'], "timestamp": event_args['timestamp'], "index": event_args['index']}
+        return {"hash": event_args['hash'], "timestamp": convert_unix_to_datetime(event_args['timestamp']), "index": event_args['index']}
     except Exception as e:
         print(f"Error in verify_hash: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/upload-to-ipfs/")
-async def upload_to_ipfs(file: UploadFile = File(...)):
-    try:
-        # Read the encrypted file content
-        file_content = await file.read()
-        
-        # Upload to Pinata
-        ipfs_hash = upload_to_pinata(file_content)
-        
-        if not ipfs_hash:
-            raise HTTPException(status_code=500, detail="Failed to upload to IPFS")
-            
-        return {"ipfs_hash": ipfs_hash}
-        
-    except Exception as e:
-        print(f"Error in upload_to_ipfs: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+# === HELPERS ===
+def get_password_hash(key: str) -> str:
+    hash_object = hashlib.sha256()
+    hash_object.update(key.encode('utf-8'))
+
+    return hash_object.hexdigest()
+
+
+def get_file_hash(data):
+    hasher = hashlib.sha256()
+    hasher.update(data)
+    hash_256 = hasher.digest()
+    return hash_256.hex()
+
+
+def convert_unix_to_datetime(unix_timestamp):
+    return datetime.datetime.utcfromtimestamp(unix_timestamp).strftime('%Y-%m-%d-%H-%M-%S')
+
 
 if __name__ == "__main__":
     import uvicorn
