@@ -61,17 +61,41 @@ w3 = Web3(Web3.HTTPProvider(f'https://sepolia.infura.io/v3/{infura_id}'))
 if not w3.is_connected():
     raise Exception("Failed to connect to Ethereum network!")
 
-contract_abi_path = os.path.join('compiled_contract', 'HashStorage_sol_HashStorage.abi')
+contract_abi_path = os.path.join(
+    'compiled_contract',
+    'HashStorage_sol_HashStorage.abi')
 
 with open(contract_abi_path, 'r') as file:
     contract_abi = json.load(file)
 
-contract_address = Web3.to_checksum_address('0xC2fba0A73D9843f109e235e985648207792Ce18f')
+contract_address = Web3.to_checksum_address(
+    '0xC2fba0A73D9843f109e235e985648207792Ce18f')
 contract = w3.eth.contract(address=contract_address, abi=contract_abi)
+
+
+ADMIN_KEY = os.getenv('ADMIN_KEY')
 
 
 class HashData(BaseModel):
     hash_value: str
+
+
+@app.delete("/reset-all-data/{admin_key}")
+def reset_instructors_test_data(admin_key: str):
+    if not admin_key == os.getenv('ADMIN_KEY'):
+        raise HTTPException(status_code=404, detail="Invalid key")
+
+    models.Base.metadata.drop_all(
+        bind=engine,
+        tables=[
+            models.User.__table__,
+            models.Transaction.__table__])
+    models.Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            models.User.__table__,
+            models.Transaction.__table__])
+    return {"message": "All tables have been reset."}
 
 
 @app.post("/register", response_model=schemas.User)
@@ -97,7 +121,8 @@ async def register(
 
 
 @app.get("/transactions/{username}", response_model=list[schemas.Transaction])
-async def transactions(username: str, password: str, db: Session = Depends(get_db)):
+async def transactions(username: str, password: str,
+                       db: Session = Depends(get_db)):
     try:
         user = crud.get_user(db, username)
         if not user:
@@ -107,7 +132,8 @@ async def transactions(username: str, password: str, db: Session = Depends(get_d
             raise HTTPException(status_code=401, detail="Invalid password")
 
         user_transactions = crud.get_user_transactions(db, user.id)
-        user_transactions = [schemas.Transaction.from_orm(transaction) for transaction in user_transactions]
+        user_transactions = [schemas.Transaction.from_orm(
+            transaction) for transaction in user_transactions]
         return user_transactions
 
     except Exception as e:
@@ -134,26 +160,32 @@ async def upload(
         file_content = await encrypted_file.read()
 
         ipfs_hash = upload_to_pinata(file_content)
+        ipfs_link = get_ipfs_link(ipfs_hash)
 
         if not ipfs_hash:
-            raise HTTPException(status_code=500, detail="Failed to upload to IPFS")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to upload to IPFS")
 
         file_hash = get_file_hash(file_content)
 
         store_hash_info = await store_hash(HashData(hash_value=file_hash))
 
         response_data = schemas.UploadResponse(
+            file_hash=file_hash,
             tx_hash=store_hash_info['tx_hash'],
             etherscan_url=store_hash_info['etherscan_url'],
             timestamp=convert_unix_to_datetime(store_hash_info['timestamp']),
-            ipfs_hash=ipfs_hash
+            ipfs_hash=ipfs_hash,
+            ipfs_link=ipfs_link
         )
 
         db_transaction = schemas.TransactionCreate(
             user_id=user.id,
+            file_hash=file_hash,
             tr_hash=store_hash_info['tx_hash'],
             bc_hash_link=store_hash_info['etherscan_url'],
-            bc_file_link=ipfs_hash,
+            bc_file_link=ipfs_link,
             decrypt_key_first_last_5=decrypt_key_first_last_5
         )
 
@@ -171,16 +203,18 @@ async def store_hash(data: HashData):
         hash_value = data.hash_value
         if not hash_value:
             raise HTTPException(status_code=400, detail="Invalid hash")
-        
-        account_address = Web3.to_checksum_address('0xc3561A59F3E69C54DAFC1ed26E9d32f6DE293d42')
+
+        account_address = Web3.to_checksum_address(
+            '0xc3561A59F3E69C54DAFC1ed26E9d32f6DE293d42')
         private_key = os.getenv('PRIVATE_KEY')
 
         nonce = w3.eth.get_transaction_count(account_address)
         print(f"Nonce: {nonce}")
-        
-        gas_estimate = contract.functions.storeHash(hash_value).estimate_gas({'from': account_address})
+
+        gas_estimate = contract.functions.storeHash(
+            hash_value).estimate_gas({'from': account_address})
         print(f"Gas estimate: {gas_estimate}")
-        
+
         transaction = contract.functions.storeHash(hash_value).build_transaction({
             'from': account_address,
             'nonce': nonce,
@@ -190,7 +224,8 @@ async def store_hash(data: HashData):
         })
         print(f"Transaction built: {transaction}")
 
-        signed_txn = w3.eth.account.sign_transaction(transaction, private_key=private_key)
+        signed_txn = w3.eth.account.sign_transaction(
+            transaction, private_key=private_key)
         print(f"Transaction signed: {signed_txn}")
 
         # Use 'raw_transaction' instead of 'rawTransaction'
@@ -204,69 +239,98 @@ async def store_hash(data: HashData):
         timestamp = block['timestamp']
 
         # Create Etherscan URL for Sepolia network
-        etherscan_url = f"https://sepolia.etherscan.io/tx/0x{tx_receipt['transactionHash'].hex()}"
+        etherscan_url = f"https://sepolia.etherscan.io/tx/0x{
+            tx_receipt['transactionHash'].hex()}"
+        print(f"Etherscan URL: {etherscan_url}")
 
         return {
             "tx_hash": tx_receipt['transactionHash'].hex(),
-            "timestamp": convert_unix_to_datetime(timestamp),
+            "timestamp": timestamp,
             "status": "Hash stored",
             "etherscan_url": etherscan_url
         }
     except ContractLogicError as e:
         print(f"Contract error: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Contract error: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Contract error: {
+                str(e)}")
     except Exception as e:
         print(f"Error in store_hash: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# @app.post("/upload-to-ipfs/")
-# async def upload_to_ipfs(file: UploadFile = File(...)):
-#     try:
-#         # Read the encrypted file content
-#         file_content = await file.read()
-#
-#         # Upload to Pinata
-#         ipfs_hash = upload_to_pinata(file_content)
-#
-#         if not ipfs_hash:
-#             raise HTTPException(status_code=500, detail="Failed to upload to IPFS")
-#
-#         return {"ipfs_hash": ipfs_hash}
-#
-#     except Exception as e:
-#         print(f"Error in upload_to_ipfs: {str(e)}")
-#         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/verify-hash/")
-async def verify_hash(tx_hash: str):
+async def get_file_hash_from_tx_hash(tx_hash: str):
     try:
         tx_receipt = w3.eth.get_transaction_receipt(tx_hash)
         print(f"Transaction receipt: {tx_receipt}")
 
         if not tx_receipt:
-            raise HTTPException(status_code=404, detail="Transaction not found")
-        
+            raise HTTPException(
+                status_code=404,
+                detail="Transaction not found")
+
         logs = tx_receipt['logs']
         print(f"Transaction logs: {logs}")
 
-        event_signature_hash = Web3.keccak(text="HashStored(string,uint256,uint256)").hex()
-        event_log = next((log for log in logs if log['topics'][0].hex() == event_signature_hash), None)
-        
+        event_signature_hash = Web3.keccak(
+            text="HashStored(string,uint256,uint256)").hex()
+        event_log = next(
+            (log for log in logs if log['topics'][0].hex() == event_signature_hash), None)
+
         if not event_log:
-            raise HTTPException(status_code=404, detail="No HashStored event found in the transaction")
+            raise HTTPException(
+                status_code=404,
+                detail="No HashStored event found in the transaction")
 
         event_data = contract.events.HashStored().process_log(event_log)
         print(f"Decoded event data: {event_data}")
 
         event_args = event_data['args']
         print(f"Event args: {event_args}")
-        
-        return {"hash": event_args['hash'], "timestamp": convert_unix_to_datetime(event_args['timestamp']), "index": event_args['index']}
+
+        return {"hash": event_args['hash'], "timestamp": convert_unix_to_datetime(
+            event_args['timestamp']), "index": event_args['index']}
     except Exception as e:
         print(f"Error in verify_hash: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/verify/{tx_hash}", response_model=schemas.VerifyResponse)
+async def verify(tx_hash: str, db: Session = Depends(get_db)):
+    try:
+        result = await get_file_hash_from_tx_hash(tx_hash)
+        file_hash = result['hash']
+        timestamp = result['timestamp']
+
+        transaction = crud.get_transaction(db, tx_hash)
+        if not transaction:
+            raise HTTPException(status_code=404, detail="IPFS link not found")
+
+        ipfs_link = transaction.bc_file_link
+        ipfs_hash = ipfs_link.split('/')[-1]
+        encrypted_file = get_from_pinata(ipfs_hash)
+
+        if not encrypted_file:
+            raise HTTPException(
+                status_code=404,
+                detail="Failed to fetch from IPFS")
+
+        ipfs_file_hash = get_file_hash(encrypted_file)
+        if not ipfs_file_hash == file_hash:
+            raise HTTPException(status_code=404, detail="File hash mismatch")
+
+        response = schemas.VerifyResponse(
+            file_hash=file_hash,
+            timestamp=timestamp,
+            bc_file_link=ipfs_link
+        )
+
+        return response
+
+    except Exception as e:
+        print(f"Error in verify: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # === HELPERS ===
@@ -285,7 +349,12 @@ def get_file_hash(data):
 
 
 def convert_unix_to_datetime(unix_timestamp):
-    return datetime.datetime.utcfromtimestamp(unix_timestamp).strftime('%Y-%m-%d-%H-%M-%S')
+    return datetime.datetime.utcfromtimestamp(
+        unix_timestamp).strftime('%Y-%m-%d-%H-%M-%S')
+
+
+def get_ipfs_link(ipfs_hash):
+    return f"https://gateway.pinata.cloud/ipfs/{ipfs_hash}"
 
 
 if __name__ == "__main__":
