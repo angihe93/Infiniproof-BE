@@ -134,6 +134,7 @@ async def transactions(username: str, password: str,
         user_transactions = crud.get_user_transactions(db, user.id)
         user_transactions = [schemas.Transaction.from_orm(
             transaction) for transaction in user_transactions]
+        user_transactions = new_list = sorted(user_transactions, key=lambda x: x.timestamp, reverse=True) #latest timestamp first
         return user_transactions
 
     except Exception as e:
