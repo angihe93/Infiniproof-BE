@@ -9,3 +9,5 @@
 .trunk/out
 .trunk/tools
 .trunk/config
+sql_app.db
+app.log

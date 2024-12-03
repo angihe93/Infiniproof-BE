@@ -349,7 +349,7 @@ def get_file_hash(data):
 
 
 def convert_unix_to_datetime(unix_timestamp):
-    return datetime.datetime.utcfromtimestamp(
+    return datetime.datetime.fromtimestamp(
         unix_timestamp).strftime('%Y-%m-%d-%H-%M-%S')
 
 
