@@ -12,6 +12,7 @@ class TransactionCreate(TransactionBase):
     bc_hash_link: str  # link to block containing hash
     bc_file_link: str  # link to distributed file storage
     decrypt_key_first_last_5: str
+    timestamp: str
 
 
 class Transaction(TransactionCreate):
