@@ -3,6 +3,7 @@ import secrets
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.exceptions import InvalidTag
 import hashlib
+import sys
 
 
 def encrypt_file(file_path, key):
@@ -43,13 +44,19 @@ def decrypt_file(encrypted_data, key):
 
 
 def main():
-    file_path = 'input.txt'
-    key = secrets.token_bytes(32)
+    file_path = sys.argv[1]
+    key = sys.argv[2]
+    key = bytes.fromhex(key)
+    
+    with open(file_path, "rb") as f:
+        encrypted_data = f.read()
+        print("############### encrypted file ###############")
+        print(encrypted_data)
 
-    encrypted_data = encrypt_file(file_path, key)
-    print("Encryption successful")
-    file_hash = create_hash(encrypted_data)
-    print(f"File hash: {file_hash}")
+    # encrypted_data = encrypt_file(file_path, key)
+    # print("Encryption successful")
+    # file_hash = create_hash(encrypted_data)
+    # print(f"File hash: {file_hash}")
 
     result = decrypt_file(encrypted_data, key)
     if result:
@@ -57,8 +64,13 @@ def main():
         print(f"Decrypted file: {filename}")
         with open(f"decrypted_{filename}", 'wb') as f:
             f.write(file_data)
+            print("############### decrypted file ###############")
+            print(file_data)
         print("File restored successfully")
 
 
 if __name__ == "__main__":
     main()
+
+
+#3acf844af2098e50e8e017ea9e1f187b21fa254943966a1b1007a34358c41da1
