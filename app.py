@@ -172,13 +172,14 @@ async def upload(
         file_hash = get_file_hash(file_content)
 
         store_hash_info = await store_hash(HashData(hash_value=file_hash))
+        timestamp = convert_unix_to_datetime(store_hash_info['timestamp'])
 
         response_data = schemas.UploadResponse(
             file_name=file_name,
             file_hash=file_hash,
             tx_hash=store_hash_info['tx_hash'],
             etherscan_url=store_hash_info['etherscan_url'],
-            timestamp=convert_unix_to_datetime(store_hash_info['timestamp']),
+            timestamp=timestamp,
             ipfs_hash=ipfs_hash,
             ipfs_link=ipfs_link
         )
@@ -190,7 +191,8 @@ async def upload(
             tr_hash=store_hash_info['tx_hash'],
             bc_hash_link=store_hash_info['etherscan_url'],
             bc_file_link=ipfs_link,
-            decrypt_key_first_last_5=decrypt_key_first_last_5
+            decrypt_key_first_last_5=decrypt_key_first_last_5,
+            timestamp=timestamp
         )
 
         crud.create_transaction(db, db_transaction)
