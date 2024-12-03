@@ -44,14 +44,17 @@ def decrypt_file(encrypted_data, key):
 
 
 def main():
+    #demo file key:
+    "8304ce05712e15215d2e41ea2df9f681ec20ffd298316c6b851456d25e5ae8f2"
     file_path = sys.argv[1]
     key = sys.argv[2]
     key = bytes.fromhex(key)
     
     with open(file_path, "rb") as f:
         encrypted_data = f.read()
-        print("############### encrypted file ###############")
+        print("############### encrypted file ###############\n")
         print(encrypted_data)
+        print("\n")
 
     # encrypted_data = encrypt_file(file_path, key)
     # print("Encryption successful")
@@ -61,16 +64,19 @@ def main():
     result = decrypt_file(encrypted_data, key)
     if result:
         filename, file_data = result
+        print("############### decrypted file ###############\n")
         print(f"Decrypted file: {filename}")
         with open(f"decrypted_{filename}", 'wb') as f:
             f.write(file_data)
-            print("############### decrypted file ###############")
             print(file_data)
-        print("File restored successfully")
+            print("\n")
+            print("File restored successfully")
+        f.close()
 
 
 if __name__ == "__main__":
     main()
-
-
-#3acf844af2098e50e8e017ea9e1f187b21fa254943966a1b1007a34358c41da1
+    
+    # MysteryFile is the encrypted text of DemoFile
+    # To demonstrate, in decryptionDemo/ run:
+    # python encrypt_and_hash.py MysteryFile 8304ce05712e15215d2e41ea2df9f681ec20ffd298316c6b851456d25e5ae8f2
