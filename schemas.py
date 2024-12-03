@@ -54,6 +54,7 @@ class UploadResponse(BaseModel):
 
 
 class VerifyResponse(BaseModel):
+    file_name: str
     file_hash: str
     timestamp: str
     bc_file_link: str

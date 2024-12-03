@@ -309,7 +309,8 @@ async def verify(tx_hash: str, db: Session = Depends(get_db)):
         transaction = crud.get_transaction(db, tx_hash)
         if not transaction:
             raise HTTPException(status_code=404, detail="IPFS link not found")
-
+        
+        file_name = transaction.file_name
         ipfs_link = transaction.bc_file_link
         ipfs_hash = ipfs_link.split('/')[-1]
         encrypted_file = get_from_pinata(ipfs_hash)
@@ -324,6 +325,7 @@ async def verify(tx_hash: str, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="File hash mismatch")
 
         response = schemas.VerifyResponse(
+            file_name=file_name,
             file_hash=file_hash,
             timestamp=timestamp,
             bc_file_link=ipfs_link
