@@ -2,6 +2,7 @@ from pydantic import BaseModel
 
 
 class TransactionBase(BaseModel):
+    file_name: str
     file_hash: str
     tr_hash: str
 
@@ -39,6 +40,7 @@ class User(UserCreate):
 
 
 class UploadResponse(BaseModel):
+    file_name: str
     file_hash: str
     tx_hash: str
     etherscan_url: str

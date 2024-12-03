@@ -156,7 +156,8 @@ async def upload(
 
         if not user.pass_hash == get_password_hash(password):
             raise HTTPException(status_code=401, detail="Invalid password")
-
+        
+        file_name = encrypted_file.filename
         file_content = await encrypted_file.read()
 
         ipfs_hash = upload_to_pinata(file_content)
@@ -172,6 +173,7 @@ async def upload(
         store_hash_info = await store_hash(HashData(hash_value=file_hash))
 
         response_data = schemas.UploadResponse(
+            file_name=file_name,
             file_hash=file_hash,
             tx_hash=store_hash_info['tx_hash'],
             etherscan_url=store_hash_info['etherscan_url'],
@@ -182,6 +184,7 @@ async def upload(
 
         db_transaction = schemas.TransactionCreate(
             user_id=user.id,
+            file_name=file_name,
             file_hash=file_hash,
             tr_hash=store_hash_info['tx_hash'],
             bc_hash_link=store_hash_info['etherscan_url'],
