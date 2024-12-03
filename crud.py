@@ -11,7 +11,7 @@ def create_transaction(db: Session, transaction: schemas.TransactionCreate):
         tr_hash=transaction.tr_hash,
         bc_hash_link=transaction.bc_hash_link,
         bc_file_link=transaction.bc_file_link,
-        decrypt_key_first_last_5=transaction.decrypt_key_first_last_5
+        decrypt_key_first_last_5=transaction.decrypt_key_first_last_5,
         timestamp=transaction.timestamp
     )
     db.add(db_transaction)
