@@ -143,6 +143,7 @@ async def transactions(username: str, password: str,
 
 @app.post("/upload", response_model=schemas.UploadResponse)
 async def upload(
+        filename: str,
         email: str,
         password: str,
         decrypt_key_first_last_5: str,
@@ -157,7 +158,7 @@ async def upload(
         if not user.pass_hash == get_password_hash(password):
             raise HTTPException(status_code=401, detail="Invalid password")
         
-        file_name = encrypted_file.filename
+        file_name = filename
         file_content = await encrypted_file.read()
 
         ipfs_hash = upload_to_pinata(file_content)
