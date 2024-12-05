@@ -306,6 +306,7 @@ async def get_file_hash_from_tx_hash(tx_hash: str):
 @app.get("/verify/{tx_hash}", response_model=schemas.VerifyResponse)
 async def verify(tx_hash: str, db: Session = Depends(get_db)):
     try:
+        tx_hash = tx_hash[2:] if tx_hash.startswith("0x") else tx_hash
         result = await get_file_hash_from_tx_hash(tx_hash)
         file_hash = result['hash']
         timestamp = result['timestamp']
