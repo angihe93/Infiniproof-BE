@@ -331,7 +331,7 @@ async def verify(
         #         detail="Failed to fetch from IPFS")
 
         file_content = await encrypted_file.read()
-        print(file_content)
+
         ipfs_file_hash = get_file_hash(file_content)
         if not ipfs_file_hash == file_hash:
             raise HTTPException(status_code=404, detail="File hash mismatch")
@@ -342,7 +342,6 @@ async def verify(
             timestamp=timestamp,
             bc_file_link=ipfs_link
         )
-
         return response
 
     except Exception as e:
@@ -362,7 +361,9 @@ def get_file_hash(data):
     hasher = hashlib.sha256()
     hasher.update(data)
     hash_256 = hasher.digest()
-    return hash_256.hex()
+    hash_hex = hash_256.hex()
+    print("hash_hex: ", hash_hex)
+    return hash_hex
 
 
 def convert_unix_to_datetime(unix_timestamp):
