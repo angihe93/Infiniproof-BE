@@ -303,8 +303,12 @@ async def get_file_hash_from_tx_hash(tx_hash: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.get("/verify/{tx_hash}", response_model=schemas.VerifyResponse)
-async def verify(tx_hash: str, db: Session = Depends(get_db)):
+@app.post("/verify/{tx_hash}", response_model=schemas.VerifyResponse)
+async def verify(
+    tx_hash: str,
+    encrypted_file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
     try:
         tx_hash = tx_hash[2:] if tx_hash.startswith("0x") else tx_hash
         result = await get_file_hash_from_tx_hash(tx_hash)
@@ -318,14 +322,17 @@ async def verify(tx_hash: str, db: Session = Depends(get_db)):
         file_name = transaction.file_name
         ipfs_link = transaction.bc_file_link
         ipfs_hash = ipfs_link.split('/')[-1]
-        encrypted_file = get_from_pinata(ipfs_hash)
+        
+        #nolonger getting encypted_file from IPFS. It is uploaded by user
+        # encrypted_file = get_from_pinata(ipfs_hash)
+        # if not encrypted_file:
+        #     raise HTTPException(
+        #         status_code=404,
+        #         detail="Failed to fetch from IPFS")
 
-        if not encrypted_file:
-            raise HTTPException(
-                status_code=404,
-                detail="Failed to fetch from IPFS")
-
-        ipfs_file_hash = get_file_hash(encrypted_file)
+        file_content = await encrypted_file.read()
+        print(file_content)
+        ipfs_file_hash = get_file_hash(file_content)
         if not ipfs_file_hash == file_hash:
             raise HTTPException(status_code=404, detail="File hash mismatch")
 
