@@ -303,8 +303,12 @@ async def get_file_hash_from_tx_hash(tx_hash: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.get("/verify/{tx_hash}", response_model=schemas.VerifyResponse)
-async def verify(tx_hash: str, db: Session = Depends(get_db)):
+@app.post("/verify/{tx_hash}", response_model=schemas.VerifyResponse)
+async def verify(
+    tx_hash: str,
+    encrypted_file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
     try:
         tx_hash = tx_hash[2:] if tx_hash.startswith("0x") else tx_hash
         result = await get_file_hash_from_tx_hash(tx_hash)
@@ -318,14 +322,17 @@ async def verify(tx_hash: str, db: Session = Depends(get_db)):
         file_name = transaction.file_name
         ipfs_link = transaction.bc_file_link
         ipfs_hash = ipfs_link.split('/')[-1]
-        encrypted_file = get_from_pinata(ipfs_hash)
+        
+        #nolonger getting encypted_file from IPFS. It is uploaded by user
+        # encrypted_file = get_from_pinata(ipfs_hash)
+        # if not encrypted_file:
+        #     raise HTTPException(
+        #         status_code=404,
+        #         detail="Failed to fetch from IPFS")
 
-        if not encrypted_file:
-            raise HTTPException(
-                status_code=404,
-                detail="Failed to fetch from IPFS")
+        file_content = await encrypted_file.read()
 
-        ipfs_file_hash = get_file_hash(encrypted_file)
+        ipfs_file_hash = get_file_hash(file_content)
         if not ipfs_file_hash == file_hash:
             raise HTTPException(status_code=404, detail="File hash mismatch")
 
@@ -335,12 +342,11 @@ async def verify(tx_hash: str, db: Session = Depends(get_db)):
             timestamp=timestamp,
             bc_file_link=ipfs_link
         )
-
         return response
 
     except Exception as e:
         print(f"Error in verify: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise e
 
 
 # === HELPERS ===
@@ -355,7 +361,9 @@ def get_file_hash(data):
     hasher = hashlib.sha256()
     hasher.update(data)
     hash_256 = hasher.digest()
-    return hash_256.hex()
+    hash_hex = hash_256.hex()
+    print("hash_hex: ", hash_hex)
+    return hash_hex
 
 
 def convert_unix_to_datetime(unix_timestamp):
