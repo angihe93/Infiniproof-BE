@@ -346,7 +346,7 @@ async def verify(
 
     except Exception as e:
         print(f"Error in verify: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise e
 
 
 # === HELPERS ===
