@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from web3 import Web3
 from web3.exceptions import ContractLogicError
 import json
@@ -15,6 +16,8 @@ import logging
 from sqlalchemy.orm import Session
 import hashlib
 import datetime
+import io
+from encrypt_and_hash import decrypt_file_from_link
 
 load_dotenv()
 
@@ -214,6 +217,9 @@ async def store_hash(data: HashData):
         account_address = Web3.to_checksum_address(
             '0xc3561A59F3E69C54DAFC1ed26E9d32f6DE293d42')
         private_key = os.getenv('PRIVATE_KEY')
+        print(f"PRIVATE_KEY loaded: {'Yes' if private_key else 'No'}")
+        if not private_key:
+            raise HTTPException(status_code=400, detail="PRIVATE_KEY is not set")
 
         nonce = w3.eth.get_transaction_count(account_address)
         print(f"Nonce: {nonce}")
@@ -246,8 +252,7 @@ async def store_hash(data: HashData):
         timestamp = block['timestamp']
 
         # Create Etherscan URL for Sepolia network
-        etherscan_url = f"https://sepolia.etherscan.io/tx/0x{
-            tx_receipt['transactionHash'].hex()}"
+        etherscan_url = f"https://sepolia.etherscan.io/tx/0x{tx_receipt['transactionHash'].hex()}"
         print(f"Etherscan URL: {etherscan_url}")
 
         return {
@@ -260,8 +265,7 @@ async def store_hash(data: HashData):
         print(f"Contract error: {str(e)}")
         raise HTTPException(
             status_code=400,
-            detail=f"Contract error: {
-                str(e)}")
+            detail=f"Contract error: {str(e)}")
     except Exception as e:
         print(f"Error in store_hash: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -347,6 +351,35 @@ async def verify(
     except Exception as e:
         print(f"Error in verify: {str(e)}")
         raise e
+
+
+@app.post("/decrypt")
+async def decrypt(
+    encryptedFileLink: str,
+    encryptionKey: str
+):
+    try:
+        print("in /decrypt try")
+        decrypted_filename, decrypted_file = decrypt_file_from_link(encryptedFileLink, encryptionKey)
+        print("decrypted_filename:",decrypted_filename)
+        print("decrypted_file[:100]:",decrypted_file[:100])
+    
+        encoded_filename = decrypted_filename.encode('utf-8') # encode filename using utf-8
+        content_disposition = f"attachment; filename*=UTF-8''{encoded_filename.decode('latin-1')}"
+
+        try:
+            resp = StreamingResponse(
+                io.BytesIO(decrypted_file),
+                media_type="application/octet-stream",
+                headers={"Content-Disposition": content_disposition}
+            )
+            return resp
+        except Exception as e:
+            logging.error(f"Error with StreamingResponse: {str(e)}")
+
+    except Exception as e:
+        print("in /decrypt except")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # === HELPERS ===
